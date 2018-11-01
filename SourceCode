@@ -1,0 +1,128 @@
+"""
+This program will attempt to identify bands of 
+properties to create a rubric to use for admitting students
+"""
+
+# IMPORT
+import pandas as pd 
+import matplotlib.pyplot as plt
+import numpy as np
+
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score
+
+#pd.set_option('display.expand_frame_repr', True)
+
+# LOAD DF
+datapathr = r"M:/Programming_Projects/Python_Projects/AdmitRubricConstruction/Attempt 2/"
+df_data = pd.read_csv(datapathr+"Data/Export 20181030-145141 - data.txt", sep="\t", header=0)
+#print(df_data.info())
+
+# JOIN WITH CEEBS
+## Load
+ceebs_ap_df = pd.read_csv(datapathr+"Data/Export 20181030-145907 - ceebs_AP.txt", sep="\t", header=0
+				).dropna(how="any", axis=0
+				).reset_index(drop=True)
+#print(ceebs_ap_df.info())
+
+## Join
+df = pd.merge(df_data,ceebs_ap_df, 
+					 left_on="School 1 Code", right_on="Ceeb", 
+					 how="left").reset_index(drop=True)
+print("..Joined Data & AP Classes Sucessfully")
+#print(df.info())
+
+## Clean
+df = df.dropna(how="any", axis=0).reset_index(drop=True)
+### Several non-float ap numbers.. dropem 
+df["# of AP/IB taken"] = pd.to_numeric(df["# of AP/IB taken"], errors="coerce")
+df["Number of AP offered"] = pd.to_numeric(df["Number of AP offered"], errors="coerce")
+df["AdmitOrNot"] = df["AdmitOrNot"].astype("category")
+
+# STATS
+# Make AP% Column
+df["AP%"] = df["# of AP/IB taken"]*100/(df["Number of AP offered"])
+df = df[df["AP%"]<=120] # Chop off those above 120% AP 
+print(df.info())
+print(df.describe().to_string())
+
+# print(df.groupby("AdmitOrNot").size())
+
+# VIZ
+# df.hist()
+# plt.show()
+
+# PREDICT
+"""
+Let's use Linear SVC and KNN to determine the category of being admitted or not, roughly 12k not admit, 25k admit
+"""
+## Split The Data
+factors = ["SATE 1600","App - AGPA","Interaction Count","AP%"] 
+X = df[factors]
+y = df["AdmitOrNot"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+		X, y, test_size=0.33, random_state=42)
+
+## Define the classifyers 
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import LinearSVC
+from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import Perceptron
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+
+classifiers = {"K-Nearest Neighbors" : KNeighborsClassifier(n_neighbors=3),
+			   "Random Forest" : RandomForestClassifier(n_estimators=10, random_state=0),
+			   "Support Vector Clf" : LinearSVC(penalty="l2", random_state=0),
+			   "Logistic Regression" : LogisticRegression(penalty="l2", random_state=0),
+			   "Perceptron" : Perceptron(penalty="l2", random_state=0),
+			   "Decision Tree" : DecisionTreeClassifier(random_state=0),
+			   "Naive Bayes" : GaussianNB()
+			   }
+
+## Define the scalers
+from sklearn.preprocessing import Normalizer
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.decomposition import PCA
+# from sklearn.preprocessing import PowerTransformerNo
+scaling = {"Normalizer" : Normalizer(norm="l2"),
+		   "Standard Scaler" : StandardScaler(),
+		   "MinMaxScaler" : MinMaxScaler(feature_range=(0,1)),
+		   "PCA" : PCA(n_components=3, random_state=0, whiten=False)
+		   # "Power Transformer" : PowerTransformer(method='yeo-johnson', standardize=True)
+		   }
+
+## Let's get learning
+fold_splits = 5
+rounding_prec = 4 # digits after the decimal
+#results_dict = {"Clf Name" : {"Scaling Method":"Accuracy"}}
+results_dict = {}
+for clfy_name, clfy in classifiers.items(): 
+
+	acc_dict = {}
+	acc_dict["Non-scaled"] = round(cross_val_score(clfy, X, y, cv=fold_splits
+									).mean(), rounding_prec) 
+	
+	for scl_name, sclr in scaling.items(): 
+		pipln = []
+		pipln.append((scl_name, sclr)) 
+		pipln.append(("clf", clfy))
+		
+		pip = Pipeline(pipln)
+		acc_dict[scl_name] = round(cross_val_score(pip, X, y, cv=fold_splits
+										).mean(), rounding_prec)
+	results_dict[clfy_name] = acc_dict
+	
+
+# Print the results
+df_ML_acc = pd.DataFrame(results_dict)
+df_ML_acc.name = "Machine Learning Models Accuracy Scores"
+print(df_ML_acc.to_string())
