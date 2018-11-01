@@ -50,8 +50,24 @@ print(df.describe().to_string())
 # print(df.groupby("AdmitOrNot").size())
 
 # VIZ
-# df.hist()
-# plt.show()
+df.hist()
+plt.show()
+
+correlations = df.corr()
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+cax = ax.matshow(correlations, vmin=-1, vmax=1)
+fig.colorbar(cax)
+names = df.columns
+ticks = np.arange(0,len(names),1)
+
+ax.set_xticks(ticks)
+ax.set_yticks(ticks)
+ax.set_xticklabels(names)
+plt.xticks(rotation=90)
+ax.set_yticklabels(names)
+plt.show()
 
 # PREDICT
 """
